@@ -288,6 +288,7 @@ S.forEach((s, i) => {
       const b = el("button", null, t);
       b.onclick = (ev) => {
         ev.stopPropagation();
+        if (performance.now() - mostradoEm < 700) return; // ignora o toque que trouxe pra esta tela
         if (sl.dataset.respondido) return; sl.dataset.respondido = 1;
         [...op.children].forEach((x, j) => x.classList.add(j === s.certa ? "certa" : "errada"));
         rv.textContent = (k === s.certa ? "Acertou! " : "Errou feio. ") + s.revela;
@@ -300,7 +301,7 @@ S.forEach((s, i) => {
   } else if (s.tipo === "final") {
     sl.classList.add("interativo");
     sl.append(el("h2", "titulo r", s.titulo), el("p", "texto r", s.texto));
-    const b = el("button", "cta r", "Abrir o presente"); b.onclick = (ev) => { ev.stopPropagation(); abrirGaleria(); };
+    const b = el("button", "cta r", "Abrir o presente"); b.onclick = (ev) => { ev.stopPropagation(); if (performance.now() - mostradoEm < 700) return; abrirGaleria(); };
     sl.append(b);
   }
   if (i === 0) sl.append(el("p", "dica", "toque na direita pra avançar · segure pra pausar"));
@@ -309,7 +310,7 @@ S.forEach((s, i) => {
 });
 
 /* ---------- motor dos stories ---------- */
-let atual = 0, inicio = 0, decorrido = 0, pausado = false, auto = true, raf;
+let mostradoEm = 0, atual = 0, inicio = 0, decorrido = 0, pausado = false, auto = true, raf;
 const slides = [...box.children];
 const fills = [...barras.querySelectorAll("i")];
 const rotulo = document.getElementById("rotulo");
@@ -320,7 +321,7 @@ function ir(i) {
   if (i >= slides.length) return;
   slides.forEach((s, k) => s.classList.toggle("on", k === i));
   fills.forEach((f, k) => (f.style.width = k < i ? "100%" : "0%"));
-  atual = i; decorrido = 0; inicio = performance.now(); DURACAO = durDe(S[i]);
+  atual = i; decorrido = 0; inicio = performance.now(); mostradoEm = inicio; DURACAO = durDe(S[i]);
   rotulo.textContent = `${i + 1} de ${slides.length}`;
   const s = S[i];
   const quizAberto = s.tipo === "quiz" && !slides[i].dataset.respondido;
