@@ -6,6 +6,7 @@
 <title>Nossa retrospectiva</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -125,6 +126,7 @@ figure:hover button, figure:focus-within button { opacity: 1; }
 .status { margin-top: 1rem; min-height: 1.5rem; font-weight: 600; }
 
 .stories-sec { margin-top: 3.5rem; }
+.stories-sec .acoes { margin: 0 0 1.5rem; }
 .stories-sec h3 { font-size: clamp(2rem, 6vw, 3rem); font-weight: 800; letter-spacing: -.02em; line-height: 1; margin: 0; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
 .card { display: flex; flex-direction: column; gap: .6rem; }
@@ -159,6 +161,10 @@ figure:hover button, figure:focus-within button { opacity: 1; }
     <div class="stories-sec">
       <h3>Pra postar no story</h3>
       <p class="sub">Fiz umas imagens com as melhores partes da retrospectiva, no tamanho do story.</p>
+      <div class="acoes" id="acoes-stories" hidden>
+        <button id="salvar-todas">Salvar todas no celular</button>
+        <button class="sec" id="zip-todas">Baixar todas no computador (.zip)</button>
+      </div>
       <div class="cards" id="cards"></div>
       <div class="status" id="status" role="status"></div>
     </div>
@@ -375,6 +381,41 @@ ir(0); raf = requestAnimationFrame(tique);
 /* ---------- imagens para o story ---------- */
 const statusEl = document.getElementById("status");
 let downloads, cardsFeitos = false;
+const cardsGerados = [];
+const paraBlob = cv => new Promise(r => cv.toBlob(r, "image/png"));
+const espera = ms => new Promise(r => setTimeout(r, ms));
+function msgErro(e) { return e && e.code === "declined" ? "Download cancelado." : e && e.code === "rate_limited" ? "Já tem um download esperando confirmação." : "Não deu pra baixar agora."; }
+async function salvarTodas(ev) {
+  if (!downloads) return; const b = ev.currentTarget; b.disabled = true;
+  let salvas = 0;
+  for (const [nome, cv] of cardsGerados) {
+    statusEl.textContent = `Salvando ${salvas + 1} de ${cardsGerados.length}… confirme cada uma.`;
+    let tentou = 0;
+    while (true) {
+      try { await downloads.save({ filename: `story-${nome}.png`, data: await paraBlob(cv) }); salvas++; break; }
+      catch (e) {
+        if (e && e.code === "rate_limited" && tentou++ < 3) { await espera(1200); continue; }
+        statusEl.textContent = e && e.code === "declined" ? `Parou na imagem ${salvas + 1}. ${salvas} salva(s).` : msgErro(e);
+        b.disabled = false; return;
+      }
+    }
+    await espera(400);
+  }
+  statusEl.textContent = `Pronto! ${salvas} imagens salvas.`; b.disabled = false;
+}
+async function zipTodas(ev) {
+  if (!downloads || !window.JSZip) { statusEl.textContent = "Não deu pra montar o arquivo .zip."; return; }
+  const b = ev.currentTarget; b.disabled = true; statusEl.textContent = "Preparando as imagens…";
+  try {
+    const zip = new JSZip();
+    for (const [nome, cv] of cardsGerados) zip.file(`story-${nome}.png`, await paraBlob(cv));
+    await downloads.save({ filename: `stories-${CONFIG.nome.toLowerCase()}-e-${CONFIG.assinatura.toLowerCase()}.zip`, data: await zip.generateAsync({ type: "blob" }) });
+    statusEl.textContent = "Imagens salvas.";
+  } catch (e) { statusEl.textContent = msgErro(e); }
+  b.disabled = false;
+}
+document.getElementById("salvar-todas").onclick = salvarTodas;
+document.getElementById("zip-todas").onclick = zipTodas;
 const W = 1080, H = 1920;
 const carregarImg = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; });
 
@@ -474,8 +515,10 @@ async function gerarCards() {
   try { downloads = window.claude ? await window.claude.use("downloads") : null; } catch { downloads = null; }
   const lista = [["meu-ensaio", cardEnsaio], ["musicas", cardMusicas], ["momentos", cardMomentos], ["eu-x-lidi", cardVersus], ["numeros", cardNumeros]];
   const box2 = document.getElementById("cards");
+  cardsGerados.length = 0;
   for (const [nome, fn] of lista) {
     const cv = await fn();
+    cardsGerados.push([nome, cv]);
     const card = el("div", "card"); const im = el("img"); im.src = cv.toDataURL("image/png"); im.alt = "Imagem para o story";
     card.append(im);
     if (downloads) {
@@ -491,6 +534,7 @@ async function gerarCards() {
     box2.append(card);
   }
   if (!downloads) statusEl.textContent = "Pra salvar, segure o dedo em cima da imagem.";
+  else document.getElementById("acoes-stories").hidden = false;
 }
 
 /* ---------- galeria ---------- */
