@@ -126,6 +126,7 @@ figure:hover button, figure:focus-within button { opacity: 1; }
 .status { margin-top: 1rem; min-height: 1.5rem; font-weight: 600; }
 
 .stories-sec { margin-top: 3.5rem; }
+[hidden] { display: none !important; }
 .stories-sec .acoes { margin: 0 0 1.5rem; }
 .stories-sec h3 { font-size: clamp(2rem, 6vw, 3rem); font-weight: 800; letter-spacing: -.02em; line-height: 1; margin: 0; }
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
@@ -385,8 +386,30 @@ const cardsGerados = [];
 const paraBlob = cv => new Promise(r => cv.toBlob(r, "image/png"));
 const espera = ms => new Promise(r => setTimeout(r, ms));
 function msgErro(e) { return e && e.code === "declined" ? "Download cancelado." : e && e.code === "rate_limited" ? "Já tem um download esperando confirmação." : "Não deu pra baixar agora."; }
+async function pegarDownloads() {
+  for (let i = 0; i < 20 && !window.claude; i++) await espera(250);
+  try { return window.claude ? await window.claude.use("downloads") : null; } catch { return null; }
+}
+// No celular: abre o menu de compartilhar com as 5 imagens juntas ("Salvar imagens" vai direto pra galeria)
+async function compartilharTodas() {
+  try {
+    if (!navigator.canShare || !matchMedia("(pointer: coarse)").matches) return false;
+    const arquivos = [];
+    for (const [nome, cv] of cardsGerados) arquivos.push(new File([await paraBlob(cv)], `story-${nome}.png`, { type: "image/png" }));
+    if (!navigator.canShare({ files: arquivos })) return false;
+    await navigator.share({ files: arquivos });
+    statusEl.textContent = "Pronto! Escolha \"Salvar imagens\" no menu pra ir tudo pra galeria.";
+    return true;
+  } catch (e) {
+    if (e && e.name === "AbortError") { statusEl.textContent = "Cancelado."; return true; }
+    return false;
+  }
+}
 async function salvarTodas(ev) {
-  if (!downloads) return; const b = ev.currentTarget; b.disabled = true;
+  const b = ev.currentTarget;
+  if (await compartilharTodas()) return;
+  if (!downloads) { statusEl.textContent = "Este aparelho não deixou salvar direto. Segure o dedo em cima de cada imagem e toque em Salvar."; return; }
+  b.disabled = true;
   let salvas = 0;
   for (const [nome, cv] of cardsGerados) {
     statusEl.textContent = `Salvando ${salvas + 1} de ${cardsGerados.length}… confirme cada uma.`;
@@ -404,7 +427,8 @@ async function salvarTodas(ev) {
   statusEl.textContent = `Pronto! ${salvas} imagens salvas.`; b.disabled = false;
 }
 async function zipTodas(ev) {
-  if (!downloads || !window.JSZip) { statusEl.textContent = "Não deu pra montar o arquivo .zip."; return; }
+  if (!downloads) { statusEl.textContent = "O download não foi liberado nesta visualização. Tente abrir o link no navegador do computador."; return; }
+  if (!window.JSZip) { statusEl.textContent = "Não deu pra montar o arquivo .zip."; return; }
   const b = ev.currentTarget; b.disabled = true; statusEl.textContent = "Preparando as imagens…";
   try {
     const zip = new JSZip();
@@ -512,7 +536,7 @@ async function cardEnsaio() {
 async function gerarCards() {
   if (cardsFeitos) return; cardsFeitos = true;
   try { await document.fonts.load('800 100px "Bricolage Grotesque"'); await document.fonts.load('400 50px "Bricolage Grotesque"'); } catch {}
-  try { downloads = window.claude ? await window.claude.use("downloads") : null; } catch { downloads = null; }
+  downloads = await pegarDownloads();
   const lista = [["meu-ensaio", cardEnsaio], ["musicas", cardMusicas], ["momentos", cardMomentos], ["eu-x-lidi", cardVersus], ["numeros", cardNumeros]];
   const box2 = document.getElementById("cards");
   cardsGerados.length = 0;
@@ -534,7 +558,8 @@ async function gerarCards() {
     box2.append(card);
   }
   if (!downloads) statusEl.textContent = "Pra salvar, segure o dedo em cima da imagem.";
-  else document.getElementById("acoes-stories").hidden = false;
+  document.getElementById("acoes-stories").hidden = false;
+  if (!downloads) document.getElementById("zip-todas").hidden = true;
 }
 
 /* ---------- galeria ---------- */
